@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Target Profiler · Descubrimiento Racional de Fármacos</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://unpkg.com/ngl@2.0.0-dev.37/dist/ngl.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;600&display=swap');
+body{font-family:'Inter',system-ui,sans-serif}
+.font-display{font-family:'Space Grotesk','Inter',sans-serif;font-weight:600}
+.section{display:none}.section.active{display:block}
+.target-card{transition:all .2s cubic-bezier(.4,0,.2,1)}
+.target-card:hover{transform:translateY(-2px);box-shadow:0 10px 15px -3px rgb(0 0 0/.1),0 4px 6px -4px rgb(0 0 0/.1)}
+.nav-active{border-bottom:3px solid #0f766e;color:#0f766e;font-weight:600}
+.metric-value{font-size:1.5rem;line-height:1;font-weight:700}
+.pharma-gradient{background:linear-gradient(135deg,#0f766e 0%,#134e4b 100%)}
+.stat-card{transition:transform .2s ease}
+.detail-scroll::-webkit-scrollbar{width:6px}
+.detail-scroll::-webkit-scrollbar-track{background:#f1f1f1;border-radius:10px}
+.detail-scroll::-webkit-scrollbar-thumb{background:#0f766e;border-radius:10px}
+.pdb-badge{display:inline-block;font-size:.65rem;padding:1px 6px;border-radius:4px;font-weight:600}
+.method-xray{background:#dbeafe;color:#1e40af}
+.method-cryo{background:#d1fae5;color:#065f46}
+.method-nmr{background:#fef3c7;color:#92400e}
+.method-other{background:#f1f5f9;color:#475569}
+#ngl-viewport{width:100%;height:320px;background:#0f172a;border-radius:12px;overflow:hidden;position:relative}
+.ngl-controls{position:absolute;top:8px;right:8px;z-index:10;display:flex;gap:6px;flex-wrap:wrap}
+.ngl-btn{padding:4px 10px;font-size:11px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.5);color:#fff;cursor:pointer;transition:background .15s}
+.ngl-btn:hover{background:rgba(15,118,110,.7)}
+.ngl-btn.active{background:rgba(15,118,110,.9);border-color:#0f766e}
+.mechanism-box{background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:1px solid #a7f3d0;border-radius:12px;padding:16px}
+.mechanism-box p{font-size:.875rem;color:#065f46;line-height:1.7}
+.mechanism-box .typing::after{content:'▋';animation:blink .7s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.drug-approved{background:#d1fae5;color:#065f46;font-size:.65rem;padding:2px 7px;border-radius:4px;font-weight:700}
+.drug-phase{background:#fef3c7;color:#92400e;font-size:.65rem;padding:2px 7px;border-radius:4px;font-weight:700}
+.drug-withdrawn{background:#fee2e2;color:#991b1b;font-size:.65rem;padding:2px 7px;border-radius:4px;font-weight:700}
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<!-- Navbar -->
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-6">
+    <div class="flex items-center justify-between h-16">
+      <div class="flex items-center gap-x-3">
+        <div class="w-10 h-10 pharma-gradient rounded-2xl flex items-center justify-center">
+          <i class="fa-solid fa-flask text-white text-xl"></i>
+        </div>
+        <div>
+          <span class="font-display text-xl font-semibold tracking-tighter">Target Profiler</span>
+          <span class="text-xs text-slate-500 block -mt-1">Rational Drug Discovery</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-x-2">
+        <div class="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium flex items-center gap-x-1.5">
+          <i class="fa-solid fa-check-circle"></i>
+          <span class="hidden sm:inline">Open Targets · UniProt · ChEMBL · PDB · Claude AI</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-6 py-8">
+  <div class="mb-8">
+    <h1 class="font-display text-4xl font-semibold tracking-tighter">Descubrimiento Racional de Fármacos</h1>
+    <p class="text-slate-600 mt-2 max-w-2xl">Enfermedad → Targets priorizados → Perfil completo: mecanismo molecular, estructura 3D, fármacos conocidos, fisicoquímica, actividad ChEMBL.</p>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex border-b border-slate-200 mb-6">
+    <button onclick="switchTab('disease-tab')" id="tab-disease-tab" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent hover:border-slate-300 nav-active">
+      <i class="fa-solid fa-disease mr-2"></i>Buscar por Enfermedad
+    </button>
+    <button onclick="switchTab('gene-tab')" id="tab-gene-tab" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent hover:border-slate-300">
+      <i class="fa-solid fa-dna mr-2"></i>Buscar por Gen
+    </button>
+    <button onclick="switchTab('favorites-tab')" id="tab-favorites-tab" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent hover:border-slate-300">
+      <i class="fa-solid fa-star mr-2"></i>Mis Targets
+    </button>
+  </div>
+
+  <!-- DISEASE TAB -->
+  <div id="disease-tab" class="section active">
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-6">
+      <div class="flex flex-col md:flex-row gap-4">
+        <div class="flex-1">
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Enfermedad o fenotipo</label>
+          <div class="relative">
+            <input type="text" id="disease-input"
+              placeholder="Ej: type 2 diabetes, Alzheimer, rheumatoid arthritis..."
+              class="w-full px-4 py-3 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+              onkeypress="if(event.key==='Enter')searchDisease()">
+            <i class="fa-solid fa-search absolute right-4 top-4 text-slate-400"></i>
+          </div>
+        </div>
+        <div class="flex items-end">
+          <button onclick="searchDisease()" class="px-8 py-3 bg-teal-700 hover:bg-teal-800 transition-colors text-white font-semibold rounded-2xl flex items-center gap-x-2 text-sm shadow-sm">
+            <i class="fa-solid fa-search"></i><span>Buscar</span>
+          </button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">Open Targets Platform GraphQL — evidencia genética, literatura, pathways, ensayos clínicos.</p>
+    </div>
+
+    <div id="disease-results" class="hidden mb-6">
+      <h3 class="font-semibold text-lg mb-3 flex items-center gap-x-2">
+        Resultados <span id="disease-count" class="text-xs bg-slate-100 px-2.5 py-1 rounded-full text-slate-600 font-mono"></span>
+      </h3>
+      <div id="disease-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </div>
+
+    <div id="associated-targets" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-lg">Targets asociados <span id="selected-disease-name" class="font-normal text-slate-600"></span></h3>
+        <button onclick="clearDiseaseResults()" class="text-xs px-3 py-1 text-slate-500 hover:text-slate-700">Limpiar</button>
+      </div>
+      <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-6 py-3 text-left font-medium text-slate-600">Símbolo</th>
+              <th class="px-6 py-3 text-left font-medium text-slate-600">Nombre</th>
+              <th class="px-6 py-3 text-center font-medium text-slate-600">Score</th>
+              <th class="px-6 py-3 text-center font-medium text-slate-600">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="targets-table-body" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- GENE TAB -->
+  <div id="gene-tab" class="section">
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-6">
+      <div class="flex flex-col md:flex-row gap-4">
+        <div class="flex-1">
+          <label class="block text-sm font-medium text-slate-700 mb-1.5">Símbolo del gen (HGNC)</label>
+          <input type="text" id="gene-input" placeholder="Ej: EGFR, TNF, KRAS, TP53..."
+            class="w-full px-4 py-3 border border-slate-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+            onkeypress="if(event.key==='Enter')searchGene()">
+        </div>
+        <div class="flex items-end">
+          <button onclick="searchGene()" class="px-8 py-3 bg-teal-700 hover:bg-teal-800 transition-colors text-white font-semibold rounded-2xl flex items-center gap-x-2 text-sm shadow-sm">
+            <i class="fa-solid fa-search"></i><span>Buscar Gen</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="gene-results" class="hidden"><div id="gene-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div></div>
+  </div>
+
+  <!-- FAVORITES TAB -->
+  <div id="favorites-tab" class="section">
+    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+      <h3 class="font-semibold text-lg mb-4 flex items-center gap-x-2">
+        <i class="fa-solid fa-star text-amber-500"></i>Targets guardados
+      </h3>
+      <div id="favorites-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <p id="no-favorites" class="text-center text-slate-500 py-8 hidden">No tienes targets guardados todavía.</p>
+    </div>
+  </div>
+
+  <!-- DETAIL MODAL -->
+  <div id="detail-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4">
+    <div class="bg-white rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
+
+      <div class="px-6 py-4 border-b flex items-center justify-between bg-slate-50 flex-shrink-0">
+        <div>
+          <div id="modal-symbol" class="font-display text-3xl font-semibold tracking-tighter"></div>
+          <div id="modal-name" class="text-slate-600 text-sm"></div>
+        </div>
+        <div class="flex items-center gap-x-2">
+          <button id="favorite-btn" onclick="toggleFavoriteFromModal()"
+            class="px-4 py-2 text-sm flex items-center gap-x-2 border border-slate-300 hover:bg-slate-100 rounded-2xl transition-colors">
+            <i class="fa-regular fa-star"></i><span>Guardar</span>
+          </button>
+          <button onclick="closeDetailModal()" class="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-2xl">
+            <i class="fa-solid fa-times text-xl"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-auto p-6 detail-scroll">
+
+        <!-- Quick stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div class="stat-card bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs text-slate-500">Longitud (aa)</div>
+            <div id="stat-length" class="metric-value text-slate-900 mt-1 font-mono">--</div>
+          </div>
+          <div class="stat-card bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs text-slate-500">pI (Bjellqvist)</div>
+            <div id="stat-pi" class="metric-value text-slate-900 mt-1 font-mono">--</div>
+          </div>
+          <div class="stat-card bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs text-slate-500">GRAVY</div>
+            <div id="stat-gravy" class="metric-value text-slate-900 mt-1 font-mono">--</div>
+          </div>
+          <div class="stat-card bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs text-slate-500">UniProt</div>
+            <div id="stat-uniprot" class="text-sm font-mono mt-1 text-teal-700 hover:underline cursor-pointer"></div>
+          </div>
+        </div>
+
+        <!-- Inner tabs -->
+        <div class="border-b mb-4">
+          <div class="flex gap-x-1 text-sm flex-wrap">
+            <button onclick="switchDetailTab('mechanism-tab')" class="detail-tab px-4 py-2 font-medium border-b-2 border-teal-700 text-teal-700" data-detail-tab="mechanism-tab">
+              <i class="fa-solid fa-atom mr-1"></i>Mecanismo
+            </button>
+            <button onclick="switchDetailTab('drugs-tab')" class="detail-tab px-4 py-2 font-medium border-b-2 border-transparent hover:border-slate-300" data-detail-tab="drugs-tab">
+              <i class="fa-solid fa-pills mr-1"></i>Fármacos
+            </button>
+            <button onclick="switchDetailTab('structure3d-tab')" class="detail-tab px-4 py-2 font-medium border-b-2 border-transparent hover:border-slate-300" data-detail-tab="structure3d-tab">
+              <i class="fa-solid fa-cube mr-1"></i>Estructura 3D
+            </button>
+            <button onclick="switchDetailTab('info-tab')" class="detail-tab px-4 py-2 font-medium border-b-2 border-transparent hover:border-slate-300" data-detail-tab="info-tab">
+              <i class="fa-solid fa-circle-info mr-1"></i>UniProt
+            </button>
+            <button onclick="switchDetailTab('physico-tab')" class="detail-tab px-4 py-2 font-medium border-b-2 border-transparent hover:border-slate-300" data-detail-tab="physico-tab">
+              <i class="fa-solid fa-flask mr-1"></i>Fisicoquímica
+            </button>
+            <button onclick="switchDetailTab('chembl-tab')" class="detail-tab px-4 py-2 font-medium border-b-2 border-transparent hover:border-slate-300" data-detail-tab="chembl-tab">
+              <i class="fa-solid fa-vial mr-1"></i>ChEMBL
+            </button>
+          </div>
+        </div>
+
+        <!-- MECHANISM TAB -->
+        <div id="mechanism-tab" class="detail-content">
+          <div id="mechanism-content">
+            <div class="mechanism-box">
+              <div class="flex items-center gap-x-2 mb-3">
+                <i class="fa-solid fa-brain text-emerald-600"></i>
+                <span class="text-xs font-semibold uppercase tracking-widest text-emerald-700">Análisis mecanístico · Claude AI</span>
+              </div>
+              <p id="mechanism-text" class="typing">Cargando análisis mecanístico...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- DRUGS TAB -->
+        <div id="drugs-tab" class="detail-content hidden">
+          <div id="drugs-content">
+            <div class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Cargando fármacos...</div>
+          </div>
+        </div>
+
+        <!-- 3D STRUCTURE TAB -->
+        <div id="structure3d-tab" class="detail-content hidden">
+          <div class="mb-3 flex items-center justify-between flex-wrap gap-2">
+            <span class="text-sm font-medium">Visor 3D · NGL Viewer</span>
+            <div class="flex gap-2 flex-wrap" id="pdb-selector"></div>
+          </div>
+          <div id="ngl-viewport" style="position:relative">
+            <div class="ngl-controls" id="ngl-controls" style="display:none">
+              <button class="ngl-btn active" onclick="setRepr('cartoon')">Cartoon</button>
+              <button class="ngl-btn" onclick="setRepr('surface')">Surface</button>
+              <button class="ngl-btn" onclick="setRepr('ball+stick')">Ball+Stick</button>
+              <button class="ngl-btn" onclick="toggleLigands()">Ligandos</button>
+            </div>
+            <div id="ngl-placeholder" class="flex items-center justify-center h-full text-slate-400 text-sm">
+              <div class="text-center">
+                <i class="fa-solid fa-cube text-4xl mb-3 opacity-30"></i>
+                <div>Selecciona una estructura PDB para visualizar</div>
+              </div>
+            </div>
+          </div>
+          <div id="pdb-list-3d" class="mt-4"></div>
+        </div>
+
+        <!-- UNIPROT TAB -->
+        <div id="info-tab" class="detail-content hidden">
+          <div id="uniprot-info" class="text-sm text-slate-700"></div>
+        </div>
+
+        <!-- PHYSICO TAB -->
+        <div id="physico-tab" class="detail-content hidden">
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <div class="text-xs uppercase tracking-widest text-slate-500 mb-1">pI (Bjellqvist)</div>
+                <div id="physico-pi" class="text-4xl font-semibold font-mono text-teal-800">--</div>
+                <div class="text-xs text-slate-500 mt-1">Búsqueda binaria</div>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-widest text-slate-500 mb-1">GRAVY</div>
+                <div id="physico-gravy" class="text-4xl font-semibold font-mono text-teal-800">--</div>
+                <div class="text-xs text-slate-500 mt-1">Kyte-Doolittle</div>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-widest text-slate-500 mb-1">Longitud</div>
+                <div id="physico-length" class="text-4xl font-semibold font-mono text-teal-800">--</div>
+                <div class="text-xs text-slate-500 mt-1">Aminoácidos</div>
+              </div>
+            </div>
+            <div class="mt-4 text-xs text-slate-500">pI: aproximación computacional. Para valores exactos: IEF experimental.</div>
+          </div>
+        </div>
+
+        <!-- CHEMBL TAB -->
+        <div id="chembl-tab" class="detail-content hidden">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="font-medium text-sm">Actividades · ChEMBL</span>
+            <span class="text-xs text-slate-500">Ki / IC50 / Kd / EC50</span>
+          </div>
+          <div class="overflow-x-auto border border-slate-200 rounded-2xl">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50">
+                <tr>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-slate-600">Tipo</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-slate-600">Valor</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-slate-600">Unidades</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-slate-600">Ensayo</th>
+                </tr>
+              </thead>
+              <tbody id="chembl-table-body" class="divide-y divide-slate-100 text-xs"></tbody>
+            </table>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">Fuente: ChEMBL via EBI.</p>
+        </div>
+
+        <!-- ANTIBODY DESIGN STUB TAB -->
+        <div id="antibody-design-tab" class="detail-content hidden">
+          <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
+            <div class="flex items-center gap-x-2 mb-4">
+              <i class="fa-solid fa-dna text-emerald-600 text-xl"></i>
+              <span class="font-semibold">Diseño de Anticuerpos (Stub Avanzado)</span>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label class="text-xs text-slate-600">Método de generación</label>
+                <select id="design-method" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm">
+                  <option value="rfdiffusion">RFdiffusion (recomendado)</option>
+                  <option value="igcraft">IgCraft (inpainting CDR)</option>
+                  <option value="mber">mBER (Nanobody)</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs text-slate-600">Número de candidatos</label>
+                <input type="number" id="design-num" value="3" min="1" max="5" class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm">
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <label class="text-xs text-slate-600">Epítopo / Secuencia objetivo (opcional)</label>
+              <input type="text" id="design-epitope" placeholder="Ej: secuencia del epítopo o sitio de unión" 
+                     class="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm">
+            </div>
+
+            <button onclick="runAntibodyDesign()" 
+                    class="w-full px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl flex items-center justify-center gap-x-2">
+              <i class="fa-solid fa-magic"></i>
+              <span>Generar candidatos de anticuerpos</span>
+            </button>
+
+            <div id="antibody-results" class="mt-4 hidden">
+              <div class="text-sm font-medium mb-2">Candidatos generados</div>
+              <div id="antibody-candidates-list" class="space-y-3"></div>
+            </div>
+          </div>
+          <p class="text-xs text-slate-500 mt-3">Stub avanzado. En producción llamaría a RFdiffusion / modelos generativos + docking (HADDOCK) y predicción de afinidad. Requiere backend desplegado.</p>
+        </div>
+
+      </div>
+
+      <div class="px-6 py-4 border-t bg-slate-50 flex justify-end gap-x-3 flex-shrink-0">
+        <button onclick="closeDetailModal()" class="px-5 py-2 text-sm font-medium border border-slate-300 rounded-2xl hover:bg-white">Cerrar</button>
+        <button onclick="exportTargetData()" class="px-5 py-2 text-sm font-medium bg-teal-700 text-white rounded-2xl hover:bg-teal-800 flex items-center gap-x-2">
+          <i class="fa-solid fa-download"></i><span>Exportar JSON</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="max-w-7xl mx-auto px-6 py-8 text-center text-xs text-slate-400">
+  Prototipo educativo · Open Targets · UniProt · ChEMBL · RCSB PDB · NGL Viewer · Claude AI
+</footer>
+
+<script>
+// ══════════════════════════════════════════════════
+// CACHÉ
+// ══════════════════════════════════════════════════
+const CACHE = new Map();
+const TTL = 3600000;
+function getCached(k){const i=CACHE.get(k);if(!i||Date.now()-i.t>TTL){CACHE.delete(k);return null;}return i.d;}
+function setCached(k,d){CACHE.set(k,{d,t:Date.now()});}
+
+// ══════════════════════════════════════════════════
+// FISICOQUÍMICA
+// ══════════════════════════════════════════════════
+function computePhysicochemical(seq){
+  if(!seq||seq.length<5)return null;
+  const kd={A:1.8,R:-4.5,N:-3.5,D:-3.5,C:2.5,Q:-3.5,E:-3.5,G:-0.4,H:-3.2,I:4.5,L:3.8,K:-3.9,M:1.9,F:2.8,P:-1.6,S:-0.8,T:-0.7,W:-0.9,Y:-1.3,V:4.2};
+  const pKa={C:9.0,D:4.0,E:4.5,H:6.5,K:10.5,R:12.5,Y:10.0};
+  const s=seq.toUpperCase();
+  let g=0,cnt=0;
+  for(const aa of s){if(kd[aa]!==undefined){g+=kd[aa];cnt++;}}
+  const gravy=cnt?g/cnt:0;
+  function ch(pH){
+    let c=0;
+    c+=1/(1+Math.pow(10,pH-9.6));
+    c-=1/(1+Math.pow(10,2.3-pH));
+    for(const aa of s){
+      if(!pKa[aa])continue;
+      if(aa==='K'||aa==='R'||aa==='H')c+=1/(1+Math.pow(10,pH-pKa[aa]));
+      else c-=1/(1+Math.pow(10,pKa[aa]-pH));
+    }
+    return c;
+  }
+  let lo=0,hi=14,pi=7;
+  for(let i=0;i<100;i++){const m=(lo+hi)/2,cv=ch(m);if(Math.abs(cv)<0.0001){pi=m;break;}if(cv>0)lo=m;else hi=m;pi=m;}
+  return{length:s.length,gravy:parseFloat(gravy.toFixed(3)),pI:parseFloat(pi.toFixed(2))};
+}
+
+// ══════════════════════════════════════════════════
+// CLAUDE API — mecanismo molecular
+// ══════════════════════════════════════════════════
+async function getMechanism(symbol, geneName, diseaseName, uniData = null){
+  const k = 'mech_' + symbol + '_' + (diseaseName || '');
+  const cached = getCached(k);
+  if (cached) return cached;
+
+  // 1. Intentar API externa (Claude)
+  try {
+    const context = diseaseName ? `en el contexto de ${diseaseName}` : 'como diana terapéutica';
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `Explica en 3-4 párrafos el mecanismo molecular por el cual ${symbol} (${geneName || ''}) es una diana terapéutica relevante ${context}. Incluye: 1) función fisiológica normal de la proteína, 2) papel patogénico en la enfermedad, 3) fundamento para su inhibición/modulación como estrategia terapéutica, 4) ejemplo de fármaco aprobado si existe. Responde en español, con precisión científica pero legible para un médico clínico. Sin markdown, sin listas, solo prosa fluida.`
+        }]
+      })
+    });
+    if (r.ok) {
+      const d = await r.json();
+      const text = d.content?.[0]?.text || null;
+      if (text) {
+        setCached(k, text);
+        return text;
+      }
+    }
+  } catch (e) {
+    console.warn('Claude API falló:', e);
+  }
+
+  // 2. FALLBACK MEJORADO (local, sin API externa)
+  let fallback = '';
+  const context = diseaseName ? `en el contexto de ${diseaseName}` : '';
+
+  if (uniData && uniData.function) {
+    fallback = `${symbol} (${geneName || ''}) desempeña un papel clave en la fisiología normal: ${uniData.function.substring(0, 400)}. `;
+  } else {
+    fallback = `${symbol} es una proteína con funciones importantes en procesos celulares. `;
+  }
+
+  if (diseaseName) {
+    fallback += `En el contexto de ${diseaseName}, su desregulación o sobreexpresión contribuye al desarrollo de la patología, lo que la convierte en una diana terapéutica atractiva. La inhibición o modulación de ${symbol} puede interrumpir las vías patogénicas clave, ofreciendo un beneficio clínico. `;
+  } else {
+    fallback += `Su modulación representa una estrategia terapéutica prometedora. `;
+  }
+
+  fallback += `Ejemplos de fármacos dirigidos a proteínas similares demuestran la viabilidad de este enfoque. Este análisis es una aproximación basada en datos públicos; para un razonamiento clínico completo se recomienda consultar literatura especializada y validación experimental.`;
+
+  setCached(k, fallback);
+  return fallback;
+}
+
+// ══════════════════════════════════════════════════
+// OPEN TARGETS
+// ══════════════════════════════════════════════════
+const OT='https://api.platform.opentargets.org/api/v4/graphql';
+async function otPost(query,variables){
+  const r=await fetch(OT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,variables})});
+  if(!r.ok)throw new Error('Open Targets HTTP '+r.status);
+  const d=await r.json();
+  if(d.errors?.length)throw new Error(d.errors[0].message);
+  return d.data;
+}
+
+async function searchDiseasesOT(q){
+  const k='ot_s_'+q.toLowerCase();const c=getCached(k);if(c)return c;
+  const d=await otPost(`query S($q:String!){search(queryString:$q,entityNames:["disease"]){hits{id name entity}}}`,{q});
+  const hits=(d.search?.hits||[]).filter(h=>h.entity==='disease');
+  setCached(k,hits);return hits;
+}
+
+async function getDiseaseTargets(efoId){
+  const k='ot_d_'+efoId;const c=getCached(k);if(c)return c;
+  const d=await otPost(`query D($e:String!){disease(efoId:$e){id name associatedTargets(page:{index:0,size:30}){rows{score target{id approvedSymbol approvedName}}}}}`,{e:efoId});
+  const rows=(d.disease?.associatedTargets?.rows||[]).sort((a,b)=>b.score-a.score);
+  const result={name:d.disease?.name||'',rows};
+  setCached(k,result);return result;
+}
+
+// Fármacos conocidos para una diana — query específica Open Targets
+async function getKnownDrugs(ensemblId){
+  const k='drugs_'+ensemblId;const c=getCached(k);if(c)return c;
+  try{
+    const d=await otPost(`query KD($id:String!){target(ensemblId:$id){knownDrugs(size:30){rows{drug{id name drugType maximumClinicalTrialPhase isApproved withdrawnNotice}mechanismOfAction disease{name}phase status}}}}`,{id:ensemblId});
+    const rows=d.target?.knownDrugs?.rows||[];
+    setCached(k,rows);return rows;
+  }catch{return[];}
+}
+
+// ══════════════════════════════════════════════════
+// UNIPROT
+// ══════════════════════════════════════════════════
+async function getUniprot(symbol){
+  const k='uni_'+symbol;const c=getCached(k);if(c)return c;
+  try{
+    const r=await fetch(`https://rest.uniprot.org/uniprotkb/search?query=gene:${symbol}+AND+organism_id:9606&format=json&size=1&fields=accession,id,protein_name,sequence,cc_function,cc_disease`);
+    if(!r.ok)return null;
+    const data=await r.json();
+    const e=data.results?.[0];if(!e)return null;
+    const result={
+      acc:e.primaryAccession,
+      proteinName:e.proteinDescription?.recommendedName?.fullName?.value||'',
+      sequence:e.sequence?.value||'',
+      function:e.comments?.find(c=>c.commentType==='FUNCTION')?.texts?.[0]?.value||'',
+      disease:e.comments?.find(c=>c.commentType==='DISEASE')?.texts?.[0]?.value||''
+    };
+    setCached(k,result);return result;
+  }catch{return null;}
+}
+
+// ══════════════════════════════════════════════════
+// PDB
+// ══════════════════════════════════════════════════
+async function getPDB(symbol){
+  const k='pdb_'+symbol;const c=getCached(k);if(c)return c;
+  try{
+    const sq=JSON.stringify({
+      query:{type:'terminal',service:'text',parameters:{attribute:'rcsb_gene_name.value',operator:'exact_match',value:symbol}},
+      return_type:'entry',
+      request_options:{sort:[{sort_by:'rcsb_entry_info.resolution_combined',direction:'asc'}],paginate:{start:0,rows:12}}
+    });
+    const sr=await fetch('https://search.rcsb.org/rcsbsearch/v2/query?json='+encodeURIComponent(sq));
+    if(!sr.ok)return[];
+    const sd=await sr.json();
+    const ids=(sd.result_set||[]).map(e=>e.identifier);
+    if(!ids.length){setCached(k,[]);return[];}
+    const details=await Promise.all(ids.slice(0,10).map(id=>
+      fetch(`https://data.rcsb.org/rest/v1/core/entry/${id}`).then(r=>r.ok?r.json():null).catch(()=>null)
+    ));
+    const results=details.filter(Boolean).map(e=>({
+      id:e.entry?.id||'?',
+      title:e.struct?.title||'',
+      resolution:e.rcsb_entry_info?.resolution_combined??null,
+      method:e.exptl?.[0]?.method||'',
+      ligands:e.rcsb_entry_info?.nonpolymer_bound_components_count||0,
+      chains:e.rcsb_entry_info?.polymer_entity_count_protein||0,
+      deposited:e.rcsb_accession_info?.deposit_date?.substring(0,10)||''
+    }));
+    setCached(k,results);return results;
+  }catch{return[];}
+}
+
+// ══════════════════════════════════════════════════
+// CHEMBL
+// ══════════════════════════════════════════════════
+async function getChemblActivities(symbol,uniprotAcc){
+  const k='chem_'+(uniprotAcc||symbol);const c=getCached(k);if(c)return c;
+  try{
+    let chemblId=null;
+    if(uniprotAcc){
+      const r=await fetch(`https://www.ebi.ac.uk/chembl/api/data/target?target_components__accession=${uniprotAcc}&format=json&limit=1`);
+      if(r.ok){const d=await r.json();chemblId=d.targets?.[0]?.target_chembl_id||null;}
+    }
+    if(!chemblId){
+      const r=await fetch(`https://www.ebi.ac.uk/chembl/api/data/target/search?q=${encodeURIComponent(symbol)}&format=json&limit=5`);
+      if(r.ok){
+        const d=await r.json();
+        const cands=(d.targets||[]).filter(t=>t.target_components?.some(tc=>tc.gene_symbols?.some(g=>g.toUpperCase()===symbol.toUpperCase())));
+        chemblId=cands[0]?.target_chembl_id||d.targets?.[0]?.target_chembl_id||null;
+      }
+    }
+    if(!chemblId){setCached(k,[]);return[];}
+    const r2=await fetch(`https://www.ebi.ac.uk/chembl/api/data/activity?target_chembl_id=${chemblId}&format=json&limit=20&assay_type=B&standard_type__in=Ki,IC50,Kd,EC50`);
+    if(!r2.ok){setCached(k,[]);return[];}
+    const d2=await r2.json();
+    const acts=(d2.activities||[]).map(a=>({type:a.standard_type||'?',value:a.standard_value||'?',units:a.standard_units||'',relation:a.standard_relation||'=',assay:(a.assay_description||'').substring(0,90)}));
+    setCached(k,acts);return acts;
+  }catch{return[];}
+}
+
+// ══════════════════════════════════════════════════
+// NGL VIEWER
+// ══════════════════════════════════════════════════
+let nglStage=null;
+let nglComponent=null;
+let showLigands=true;
+let currentRepr='cartoon';
+
+function initNGL(){
+  if(nglStage){nglStage.dispose();nglStage=null;nglComponent=null;}
+  const vp=document.getElementById('ngl-viewport');
+  nglStage=new NGL.Stage('ngl-viewport',{backgroundColor:'#0f172a',tooltip:false});
+  nglStage.setSize(vp.offsetWidth+'px','320px');
+}
+
+async function loadPDBInViewer(pdbId){
+  document.getElementById('ngl-placeholder').style.display='none';
+  document.getElementById('ngl-controls').style.display='flex';
+  if(!nglStage)initNGL();
+  nglStage.removeAllComponents();
+  nglComponent=null;
+  try{
+    const comp=await nglStage.loadFile('rcsb://'+pdbId,{defaultRepresentation:false});
+    nglComponent=comp;
+    applyRepresentation(currentRepr);
+    comp.autoView();
+    // Actualizar botones selector
+    document.querySelectorAll('.pdb-sel-btn').forEach(b=>{
+      b.classList.remove('bg-teal-700','text-white');
+      b.classList.add('bg-white','text-slate-700');
+      if(b.dataset.pdbid===pdbId){b.classList.add('bg-teal-700','text-white');b.classList.remove('bg-white','text-slate-700');}
+    });
+  }catch(e){
+    document.getElementById('ngl-placeholder').style.display='flex';
+    document.getElementById('ngl-placeholder').innerHTML='<div class="text-center"><i class="fa-solid fa-triangle-exclamation text-amber-400 text-3xl mb-2"></i><div class="text-slate-400 text-sm">No se pudo cargar '+pdbId+'</div></div>';
+  }
+}
+
+function applyRepresentation(repr){
+  if(!nglComponent)return;
+  nglComponent.removeAllRepresentations();
+  if(repr==='cartoon'){
+    nglComponent.addRepresentation('cartoon',{color:'chainindex'});
+    if(showLigands)nglComponent.addRepresentation('ball+stick',{sele:'hetero and not water',colorScheme:'element'});
+  }else if(repr==='surface'){
+    nglComponent.addRepresentation('surface',{colorScheme:'electrostatic',opacity:.85});
+  }else if(repr==='ball+stick'){
+    nglComponent.addRepresentation('ball+stick',{colorScheme:'element'});
+  }
+  currentRepr=repr;
+  document.querySelectorAll('.ngl-btn').forEach(b=>{
+    b.classList.remove('active');
+    if(b.textContent.toLowerCase()===repr.toLowerCase()||
+       (repr==='ball+stick'&&b.textContent==='Ball+Stick'))b.classList.add('active');
+  });
+}
+
+function setRepr(repr){applyRepresentation(repr);}
+
+function toggleLigands(){
+  showLigands=!showLigands;
+  applyRepresentation(currentRepr);
+}
+
+// ══════════════════════════════════════════════════
+// UI
+// ══════════════════════════════════════════════════
+function switchTab(id){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('[id^="tab-"]').forEach(b=>{
+    b.classList.remove('nav-active');
+    if(b.id==='tab-'+id)b.classList.add('nav-active');
+  });
+}
+
+function switchDetailTab(id){
+  document.querySelectorAll('.detail-content').forEach(e=>e.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+  document.querySelectorAll('.detail-tab').forEach(b=>{
+    b.classList.remove('border-teal-700','text-teal-700');
+    b.classList.add('border-transparent');
+    if(b.dataset.detailTab===id){b.classList.add('border-teal-700','text-teal-700');b.classList.remove('border-transparent');}
+  });
+  // Inicializar NGL si se abre la pestaña 3D
+  if(id==='structure3d-tab'&&!nglStage){
+    setTimeout(initNGL,50);
+  }
+}
+
+let currentTargetData=null;
+let currentFavorites=JSON.parse(localStorage.getItem('tp_favs')||'[]');
+function saveFavs(){localStorage.setItem('tp_favs',JSON.stringify(currentFavorites));}
+
+function updateFavoritesUI(){
+  const c=document.getElementById('favorites-list');
+  const n=document.getElementById('no-favorites');
+  c.innerHTML='';
+  if(!currentFavorites.length){n.classList.remove('hidden');return;}
+  n.classList.add('hidden');
+  currentFavorites.forEach(t=>{
+    const card=document.createElement('div');
+    card.className='target-card bg-white border border-slate-200 rounded-2xl p-4 cursor-pointer hover:border-teal-300';
+    card.innerHTML=`<div class="flex justify-between items-start"><div><div class="font-semibold text-lg">${t.symbol}</div><div class="text-sm text-slate-600 line-clamp-2">${t.name||''}</div></div>
+      <button onclick="event.stopImmediatePropagation();removeFavorite('${t.symbol}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash text-sm"></i></button></div>
+      <div class="mt-3 flex gap-2 text-xs">
+        <span class="px-2 py-0.5 bg-slate-100 rounded">pI: ${t.pi||'--'}</span>
+        <span class="px-2 py-0.5 bg-slate-100 rounded">GRAVY: ${t.gravy||'--'}</span>
+      </div>`;
+    card.onclick=()=>showTargetDetail(t.symbol,t);
+    c.appendChild(card);
+  });
+}
+
+function addToFavorites(t){
+  if(!currentFavorites.find(f=>f.symbol===t.symbol)){
+    currentFavorites.push({symbol:t.symbol,name:t.name,pi:t.physico?.pI,gravy:t.physico?.gravy,acc:t.uniprot?.acc});
+    saveFavs();updateFavoritesUI();
+  }
+}
+function removeFavorite(symbol){currentFavorites=currentFavorites.filter(f=>f.symbol!==symbol);saveFavs();updateFavoritesUI();}
+function toggleFavoriteFromModal(){
+  if(!currentTargetData)return;
+  const ex=currentFavorites.find(f=>f.symbol===currentTargetData.symbol);
+  if(ex)removeFavorite(currentTargetData.symbol);else addToFavorites(currentTargetData);
+  updateFavoriteButton();
+}
+function updateFavoriteButton(){
+  const btn=document.getElementById('favorite-btn');if(!btn||!currentTargetData)return;
+  const ex=currentFavorites.find(f=>f.symbol===currentTargetData.symbol);
+  btn.innerHTML=ex?`<i class="fa-solid fa-star text-amber-500"></i> <span>Guardado</span>`:`<i class="fa-regular fa-star"></i> <span>Guardar</span>`;
+}
+
+// ══════════════════════════════════════════════════
+// RENDER DRUGS
+// ══════════════════════════════════════════════════
+function renderDrugs(drugs){
+  const div=document.getElementById('drugs-content');
+  if(!drugs||!drugs.length){
+    div.innerHTML='<div class="text-sm text-slate-500 py-4">No se encontraron fármacos conocidos para esta diana en Open Targets.</div>';
+    return;
+  }
+  // Deduplicar por nombre de fármaco
+  const seen=new Set();
+  const unique=drugs.filter(d=>{const n=d.drug.name.toLowerCase();if(seen.has(n))return false;seen.add(n);return true;});
+  // Ordenar: aprobados primero
+  unique.sort((a,b)=>{
+    if(a.drug.isApproved&&!b.drug.isApproved)return-1;
+    if(!a.drug.isApproved&&b.drug.isApproved)return 1;
+    return(b.drug.maximumClinicalTrialPhase||0)-(a.drug.maximumClinicalTrialPhase||0);
+  });
+  let html=`<div class="overflow-x-auto border border-slate-200 rounded-2xl">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium text-slate-600">Fármaco</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-slate-600">Tipo</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-slate-600">Estado</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-slate-600">Mecanismo</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-slate-600">Indicación</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 text-xs">`;
+  unique.forEach(d=>{
+    const drug=d.drug;
+    let badge='';
+    if(drug.withdrawnNotice){badge=`<span class="drug-withdrawn">RETIRADO</span>`;}
+    else if(drug.isApproved){badge=`<span class="drug-approved">APROBADO</span>`;}
+    else if(drug.maximumClinicalTrialPhase){badge=`<span class="drug-phase">Fase ${drug.maximumClinicalTrialPhase}</span>`;}
+    html+=`<tr class="hover:bg-slate-50">
+      <td class="px-4 py-3 font-semibold text-slate-800">${drug.name}</td>
+      <td class="px-4 py-3 text-slate-600">${drug.drugType||'--'}</td>
+      <td class="px-4 py-3">${badge}</td>
+      <td class="px-4 py-3 text-slate-600">${d.mechanismOfAction||'--'}</td>
+      <td class="px-4 py-3 text-slate-500">${d.disease?.name||'--'}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>
+    <p class="text-xs text-slate-500 mt-2">Fuente: Open Targets Platform · ${unique.length} fármacos únicos</p>`;
+  div.innerHTML=html;
+}
+
+// ══════════════════════════════════════════════════
+// RENDER PDB LIST + 3D SELECTOR
+// ══════════════════════════════════════════════════
+function methodBadge(m){
+  const u=(m||'').toUpperCase();
+  if(u.includes('X-RAY')||u.includes('DIFFRACTION'))return`<span class="pdb-badge method-xray">X-Ray</span>`;
+  if(u.includes('ELECTRON')||u.includes('CRYO'))return`<span class="pdb-badge method-cryo">Cryo-EM</span>`;
+  if(u.includes('NMR'))return`<span class="pdb-badge method-nmr">NMR</span>`;
+  return`<span class="pdb-badge method-other">${m||'?'}</span>`;
+}
+
+function renderPDB3D(pdbData, symbol){
+  // Botones selector en la pestaña 3D
+  const sel=document.getElementById('pdb-selector');
+  sel.innerHTML='';
+  if(!pdbData||!pdbData.length){
+    sel.innerHTML=`<a href="https://www.rcsb.org/search?q=${encodeURIComponent(symbol)}" target="_blank" class="text-xs text-teal-600 hover:underline">Buscar en RCSB →</a>`;
+    return;
+  }
+  pdbData.slice(0,6).forEach((p,i)=>{
+    const btn=document.createElement('button');
+    btn.className='pdb-sel-btn text-xs px-3 py-1.5 rounded-xl border border-slate-300 font-mono transition-colors '+(i===0?'bg-teal-700 text-white':'bg-white text-slate-700 hover:border-teal-500');
+    btn.dataset.pdbid=p.id;
+    btn.title=`${p.method}${p.resolution?' · '+parseFloat(p.resolution).toFixed(2)+' Å':''}${p.ligands?' · '+p.ligands+' lig':''}`;
+    btn.textContent=p.id;
+    btn.onclick=()=>loadPDBInViewer(p.id);
+    sel.appendChild(btn);
+  });
+  // Lista de estructuras bajo el viewer
+  const listDiv=document.getElementById('pdb-list-3d');
+  listDiv.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+    ${pdbData.map(p=>`
+    <div class="border border-slate-200 rounded-2xl p-3 bg-white hover:shadow-sm transition cursor-pointer" onclick="loadPDBInViewer('${p.id}')">
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-mono font-bold text-teal-700">${p.id}</span>
+        <div class="flex gap-1">${methodBadge(p.method)}${p.resolution?`<span class="pdb-badge method-other">${parseFloat(p.resolution).toFixed(2)} Å</span>`:''}</div>
+      </div>
+      ${p.title?`<div class="text-xs text-slate-500 mt-1 line-clamp-1">${p.title}</div>`:''}
+      <div class="flex gap-3 mt-2 text-xs text-slate-400">
+        ${p.ligands?`<span><i class="fa-solid fa-capsules mr-1 text-amber-400"></i>${p.ligands} lig.</span>`:''}
+        ${p.deposited?`<span>${p.deposited}</span>`:''}
+        <a href="https://www.rcsb.org/structure/${p.id}" target="_blank" onclick="event.stopPropagation()" class="ml-auto text-teal-600 hover:underline">RCSB →</a>
+      </div>
+    </div>`).join('')}
+  </div>`;
+  // Cargar primera estructura automáticamente (la mejor resolución porque la query ordena asc)
+  if(pdbData.length>0){
+    setTimeout(()=>loadPDBInViewer(pdbData[0].id),100);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// SEARCH
+// ══════════════════════════════════════════════════
+async function searchDisease(){
+  const q=document.getElementById('disease-input').value.trim();if(!q)return;
+  const rd=document.getElementById('disease-results');
+  const ld=document.getElementById('disease-list');
+  ld.innerHTML=`<div class="col-span-full flex justify-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl text-teal-600"></i></div>`;
+  rd.classList.remove('hidden');
+  document.getElementById('associated-targets').classList.add('hidden');
+  try{
+    const hits=await searchDiseasesOT(q);
+    document.getElementById('disease-count').textContent=`${hits.length} resultados`;
+    ld.innerHTML='';
+    if(!hits.length){ld.innerHTML=`<div class="col-span-full text-center py-6 text-slate-500">No se encontraron enfermedades. Prueba en inglés.</div>`;return;}
+    hits.forEach(hit=>{
+      const card=document.createElement('div');
+      card.className='target-card bg-white border border-slate-200 hover:border-teal-300 rounded-2xl p-4 cursor-pointer';
+      card.innerHTML=`<div class="font-semibold">${hit.name}</div><div class="text-xs text-slate-500 mt-1">${hit.id}</div><div class="mt-3 text-xs px-2.5 py-1 bg-teal-50 text-teal-700 inline-block rounded-full">Ver targets asociados →</div>`;
+      card.onclick=()=>loadDiseaseTargets(hit.id,hit.name);
+      ld.appendChild(card);
+    });
+  }catch(e){
+    ld.innerHTML=`<div class="col-span-full text-center py-6 text-red-500">Error: ${e.message}</div>`;
+  }
+}
+
+async function loadDiseaseTargets(efoId,diseaseName){
+  const container=document.getElementById('associated-targets');
+  const tbody=document.getElementById('targets-table-body');
+  document.getElementById('selected-disease-name').textContent='— '+diseaseName;
+  tbody.innerHTML=`<tr><td colspan="4" class="px-6 py-8 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Cargando targets...</td></tr>`;
+  container.classList.remove('hidden');
+  try{
+    const data=await getDiseaseTargets(efoId);
+    tbody.innerHTML='';
+    if(!data.rows.length){tbody.innerHTML=`<tr><td colspan="4" class="px-6 py-6 text-center text-slate-500">No se encontraron targets.</td></tr>`;return;}
+    data.rows.forEach(row=>{
+      const tr=document.createElement('tr');
+      tr.className='hover:bg-slate-50 cursor-pointer';
+      tr.innerHTML=`<td class="px-6 py-3 font-semibold">${row.target.approvedSymbol}</td>
+        <td class="px-6 py-3 text-sm text-slate-600">${row.target.approvedName||''}</td>
+        <td class="px-6 py-3 text-center"><span class="inline-block px-3 py-0.5 text-xs font-mono bg-emerald-100 text-emerald-700 rounded-full">${row.score.toFixed(3)}</span></td>
+        <td class="px-6 py-3 text-center"><button class="px-4 py-1 text-xs bg-teal-700 text-white rounded-xl hover:bg-teal-800">Ver perfil</button></td>`;
+      // Guardamos ensemblId en el dataset para la query de fármacos
+      tr.dataset.ensemblid=row.target.id;
+      tr.onclick=()=>showTargetDetail(row.target.approvedSymbol,{symbol:row.target.approvedSymbol,name:row.target.approvedName,score:row.score,disease:diseaseName,ensemblId:row.target.id});
+      tbody.appendChild(tr);
+    });
+  }catch(e){
+    tbody.innerHTML=`<tr><td colspan="4" class="px-6 py-6 text-center text-red-500">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function clearDiseaseResults(){
+  document.getElementById('associated-targets').classList.add('hidden');
+  document.getElementById('disease-results').classList.add('hidden');
+  document.getElementById('disease-input').value='';
+}
+
+async function searchGene(){
+  const symbol=document.getElementById('gene-input').value.trim().toUpperCase();if(!symbol)return;
+  const rd=document.getElementById('gene-results');
+  const ld=document.getElementById('gene-list');
+  ld.innerHTML=`<div class="col-span-full py-6 text-center"><i class="fa-solid fa-spinner fa-spin"></i></div>`;
+  rd.classList.remove('hidden');
+  const uni=await getUniprot(symbol);
+  ld.innerHTML='';
+  const card=document.createElement('div');
+  card.className='target-card bg-white border border-slate-200 rounded-2xl p-5 cursor-pointer hover:border-teal-300';
+  card.innerHTML=`<div class="flex justify-between"><div><div class="font-bold text-xl">${symbol}</div><div class="text-sm text-slate-600">${uni?uni.proteinName:'No encontrado en UniProt'}</div></div><span class="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded h-fit">Directo</span></div><div class="mt-4 text-xs text-teal-700 font-medium">Ver perfil completo →</div>`;
+  card.onclick=()=>showTargetDetail(symbol,{symbol,name:uni?.proteinName||symbol});
+  ld.appendChild(card);
+}
+
+// ══════════════════════════════════════════════════
+// SHOW DETAIL — flujo correcto sin race condition
+// ══════════════════════════════════════════════════
+async function showTargetDetail(symbol,extraData={}){
+  const modal=document.getElementById('detail-modal');
+  modal.classList.remove('hidden');modal.style.display='flex';
+
+  // Reset
+  document.getElementById('modal-symbol').textContent=symbol;
+  document.getElementById('modal-name').textContent=extraData.name||'';
+  document.getElementById('mechanism-text').textContent='Analizando mecanismo molecular...';
+  document.getElementById('mechanism-text').classList.add('typing');
+  document.getElementById('drugs-content').innerHTML='<div class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Cargando fármacos...</div>';
+  document.getElementById('uniprot-info').innerHTML='<div class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Cargando UniProt...</div>';
+  document.getElementById('pdb-selector').innerHTML='';
+  document.getElementById('pdb-list-3d').innerHTML='';
+  document.getElementById('ngl-placeholder').style.display='flex';
+  document.getElementById('ngl-placeholder').innerHTML='<div class="text-center"><i class="fa-solid fa-cube text-4xl mb-3 opacity-30"></i><div>Selecciona una estructura PDB para visualizar</div></div>';
+  document.getElementById('ngl-controls').style.display='none';
+  ['stat-length','stat-pi','stat-gravy','stat-uniprot'].forEach(id=>{document.getElementById(id).textContent='--';});
+  ['physico-pi','physico-gravy','physico-length'].forEach(id=>{document.getElementById(id).textContent='--';});
+  document.getElementById('chembl-table-body').innerHTML='';
+  if(nglStage){nglStage.removeAllComponents();nglComponent=null;}
+
+  currentTargetData={symbol,...extraData};
+  switchDetailTab('mechanism-tab');  // ← Pestaña por defecto: Mecanismo
+
+  // PASO 1: UniProt (necesario para ChEMBL)
+  const uni=await getUniprot(symbol);
+
+  if(uni){
+    currentTargetData.uniprot=uni;
+    currentTargetData.name=uni.proteinName||currentTargetData.name;
+    document.getElementById('modal-name').textContent=uni.proteinName||'';
+    document.getElementById('stat-uniprot').textContent=uni.acc;
+    document.getElementById('stat-uniprot').onclick=()=>window.open('https://www.uniprot.org/uniprotkb/'+uni.acc,'_blank');
+    let html=`<div class="space-y-4 text-sm"><div><span class="font-semibold">UniProt:</span> <a href="https://www.uniprot.org/uniprotkb/${uni.acc}" target="_blank" class="text-teal-700 hover:underline">${uni.acc}</a></div>`;
+    if(uni.function)html+=`<div><span class="font-semibold">Función:</span> <span class="text-slate-600">${uni.function.substring(0,500)}${uni.function.length>500?'…':''}</span></div>`;
+    if(uni.disease)html+=`<div><span class="font-semibold">Enfermedad:</span> <span class="text-slate-600">${uni.disease.substring(0,350)}${uni.disease.length>350?'…':''}</span></div>`;
+    html+='</div>';
+    document.getElementById('uniprot-info').innerHTML=html;
+    if(uni.sequence){
+      const ph=computePhysicochemical(uni.sequence);
+      if(ph){
+        currentTargetData.physico=ph;
+        document.getElementById('stat-length').textContent=ph.length;
+        document.getElementById('stat-pi').textContent=ph.pI;
+        document.getElementById('stat-gravy').textContent=ph.gravy;
+        document.getElementById('physico-pi').textContent=ph.pI;
+        document.getElementById('physico-gravy').textContent=ph.gravy;
+        document.getElementById('physico-length').textContent=ph.length;
+      }
+    }
+  }else{
+    document.getElementById('uniprot-info').innerHTML='<div class="text-sm text-slate-500">No se encontró información en UniProt.</div>';
+  }
+
+  const uniprotAcc=uni?.acc||null;
+  const ensemblId=extraData.ensemblId||null;
+  const diseaseName=extraData.disease||null;
+
+  // PASO 2: paralelo — mecanismo, PDB, fármacos, ChEMBL
+  const [mechanism, pdbData, drugs, chemblActs]=await Promise.all([
+    getMechanism(symbol, uni?.proteinName||'', diseaseName, uni),  // ← Pasa uniData para fallback mejorado
+    getPDB(symbol),
+    ensemblId?getKnownDrugs(ensemblId):Promise.resolve([]),  // ← Usa ensemblId correcto desde búsqueda por enfermedad
+    getChemblActivities(symbol, uniprotAcc)
+  ]);
+
+  // Mecanismo
+  const mechEl=document.getElementById('mechanism-text');
+  mechEl.classList.remove('typing');
+  if(mechanism){
+    mechEl.textContent=mechanism;
+  }else{
+    mechEl.textContent='No se pudo obtener el análisis mecanístico. Verifica la conexión o intenta de nuevo.';
+  }
+
+  // Fármacos
+  renderDrugs(drugs);
+
+  // PDB
+  renderPDB3D(pdbData,symbol);
+
+  // ChEMBL
+  const tbody=document.getElementById('chembl-table-body');
+  if(chemblActs&&chemblActs.length){
+    tbody.innerHTML=chemblActs.map(a=>`<tr class="hover:bg-slate-50">
+      <td class="px-4 py-2 font-medium text-teal-700">${a.type}</td>
+      <td class="px-4 py-2 font-mono">${a.relation}${a.value}</td>
+      <td class="px-4 py-2">${a.units}</td>
+      <td class="px-4 py-2 text-xs text-slate-600">${a.assay}</td>
+    </tr>`).join('');
+  }else{
+    tbody.innerHTML=`<tr><td colspan="4" class="px-4 py-6 text-center text-slate-500">Sin actividades en ChEMBL.</td></tr>`;
+  }
+
+  updateFavoriteButton();
+}
+
+function closeDetailModal(){
+  const m=document.getElementById('detail-modal');
+  m.style.display='none';m.classList.add('hidden');
+  currentTargetData=null;
+  if(nglStage){nglStage.removeAllComponents();nglComponent=null;}
+}
+
+function exportTargetData(){
+  if(!currentTargetData)return;
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(currentTargetData,null,2));
+  a.download=(currentTargetData.symbol||'target')+'_profile.json';
+  a.click();
+}
+
+// ══════════════════════════════════════════════════
+// STUB AVANZADO DISEÑO DE ANTICUERPOS
+// ══════════════════════════════════════════════════
+async function runAntibodyDesign() {
+  if (!currentTargetData || !currentTargetData.symbol) {
+    alert('Primero abre un target');
+    return;
+  }
+
+  const method = document.getElementById('design-method').value;
+  const num = parseInt(document.getElementById('design-num').value) || 3;
+  const epitope = document.getElementById('design-epitope').value.trim();
+
+  const resultsDiv = document.getElementById('antibody-results');
+  const listDiv = document.getElementById('antibody-candidates-list');
+  listDiv.innerHTML = `<div class="text-sm text-emerald-600"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Generando candidatos con ${method}...</div>`;
+  resultsDiv.classList.remove('hidden');
+
+  try {
+    let responseData;
+
+    if (typeof USE_BACKEND !== 'undefined' && USE_BACKEND) {
+      // Llamada real al backend
+      const res = await fetch('/.netlify/functions/design-antibody', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: currentTargetData.symbol,
+          epitope: epitope || null,
+          method: method,
+          numCandidates: num
+        })
+      });
+      responseData = await res.json();
+    } else {
+      // Simulación local (mismo formato que el backend)
+      responseData = {
+        target: currentTargetData.symbol,
+        epitope: epitope || 'No especificado',
+        method_used: method,
+        generated_at: new Date().toISOString(),
+        candidates: Array.from({ length: num }, (_, i) => ({
+          id: `Ab_${currentTargetData.symbol}_${i+1}`,
+          method: method,
+          sequence_VH: `EVQLVESGGGLVQPGGSLRLSCAASGFTFSSYAMSWVRQAPGKGLEWVSAISGSGGSTYYADSVKGRFTISRDNSKNTLYLQMNSLRAEDTAVYYCAKCDR3_${currentTargetData.symbol.slice(0,3)}${i}WGQGTLVTVSS`,
+          sequence_VL: `DIQMTQSPSSLSASVGDRVTITCRASQSVSSAVAWYQQKPGKAPKLLIYSASSLYSGVPSRFSGSGSGTDFTLTISSLQPEDFATYYCQQYNSLPYTFGQGTKVEIK`,
+          cdr3: `CDR3_${currentTargetData.symbol.slice(0,3)}${i}`,
+          metrics: {
+            predicted_affinity_nM: (7 + Math.random() * 3).toFixed(2),
+            docking_score_kcal_mol: (-8 - Math.random() * 4).toFixed(2),
+            developability_score: Math.floor(70 + Math.random() * 25),
+            confidence: (0.78 + Math.random() * 0.18).toFixed(2)
+          },
+          notes: `Candidato simulado con ${method}. Requiere validación experimental.`
+        })).sort((a, b) => a.metrics.predicted_affinity_nM - b.metrics.predicted_affinity_nM),
+        disclaimer: 'Modo simulación (sin backend). Despliega las funciones Netlify para resultados reales.',
+        next_steps: ['Integrar RFdiffusion real', 'Añadir docking con HADDOCK', 'Predicción de afinidad con modelo ML']
+      };
+    }
+
+    // Renderizar resultados bonitos
+    listDiv.innerHTML = responseData.candidates.map(c => `
+      <div class="border border-emerald-200 bg-white rounded-2xl p-4">
+        <div class="flex justify-between items-start mb-2">
+          <div>
+            <div class="font-mono font-bold text-emerald-700">${c.id}</div>
+            <div class="text-xs text-slate-500">${c.method} • ${c.cdr3}</div>
+          </div>
+          <div class="text-right text-xs">
+            <div class="font-semibold">Afinidad: ${c.metrics.predicted_affinity_nM} nM</div>
+            <div>Docking: ${c.metrics.docking_score_kcal_mol} kcal/mol</div>
+            <div>Developabilidad: ${c.metrics.developability_score}%</div>
+          </div>
+        </div>
+        <div class="text-xs bg-emerald-50 p-2 rounded font-mono overflow-x-auto">
+          VH: ${c.sequence_VH.substring(0,80)}...<br>
+          VL: ${c.sequence_VL.substring(0,80)}...
+        </div>
+        <div class="mt-2 text-xs text-slate-600">${c.notes}</div>
+        <div class="mt-2 flex gap-2">
+          <button onclick="copyToClipboard('${c.sequence_VH}')" class="text-xs px-2 py-1 bg-white border border-emerald-300 rounded">Copiar VH</button>
+          <button onclick="copyToClipboard('${c.sequence_VL}')" class="text-xs px-2 py-1 bg-white border border-emerald-300 rounded">Copiar VL</button>
+        </div>
+      </div>
+    `).join('');
+
+  } catch (err) {
+    listDiv.innerHTML = `<div class="text-red-500 text-sm">Error: ${err.message}. Asegúrate de tener el backend desplegado.</div>`;
+  }
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Secuencia copiada al portapapeles');
+  });
+}
+
+window.onload=function(){
+  updateFavoritesUI();
+  document.addEventListener('keydown',e=>{
+    if(e.key==='/'&&document.activeElement.tagName==='BODY'){
+      e.preventDefault();
+      const active=document.querySelector('.section.active');
+      if(active?.id==='disease-tab')document.getElementById('disease-input').focus();
+      else if(active?.id==='gene-tab')document.getElementById('gene-input').focus();
+    }
+  });
+};
+</script>
+</body>
+</html>
